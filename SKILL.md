@@ -172,7 +172,7 @@ CatFeeder/                      ← root = PlatformIO project (open this in VS C
 │   └── power.cpp / power.h
 ├── schema/
 │   ├── CatFeederSchematic.fzz  ← Fritzing (legacy/illustration)
-│   └── CatFeeder/              ← KiCad 9.0 project (authoritative schematic)
+│   └── KiCad/                  ← KiCad 9.0 project (authoritative schematic)
 │       ├── CatFeeder.kicad_sch ← full schematic (source of truth for connections)
 │       ├── CatFeeder.kicad_pcb ← PCB layout
 │       ├── cat_feeder.csv      ← BOM

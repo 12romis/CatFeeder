@@ -25,8 +25,8 @@ The device runs from a single 18650 cell and sleeps between events.
 
 ### Wiring
 
-See schematic in [`schema/CatFeeder/cat_feeder.pdf`](schema/CatFeeder/cat_feeder.pdf)
-or open the KiCad project at [`schema/CatFeeder/CatFeeder.kicad_sch`](schema/CatFeeder/CatFeeder.kicad_sch).
+See schematic in [`schema/KiCad/cat_feeder.pdf`](schema/KiCad/cat_feeder.pdf)
+or open the KiCad project at [`schema/KiCad/CatFeeder.kicad_sch`](schema/KiCad/CatFeeder.kicad_sch).
 
 <!-- Add link to rendered schematic image here if needed -->
 
