@@ -1,13 +1,18 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <esp_sleep.h>
+// esp_clk_rtc_time() — IDF 5.x rename of esp_rtc_get_time_us(). Reads RTC slow-clock
+// counter in microseconds; runs through deep sleep on both C3 and S3.
+#include <esp_private/esp_clk.h>
 #include "schedule.h"
 #include "dosing.h"
 #include "config.h"
 
+static inline uint64_t getRtcUs() { return esp_clk_rtc_time(); }
+
 // Time tracking — survives deep sleep; wiped on full power-off (handled in init)
 RTC_DATA_ATTR static uint32_t rtcEpochBase  = 0;   // epoch at last sync
-RTC_DATA_ATTR static uint64_t rtcMicrosBase = 0;   // esp_rtc_get_time_us() at last sync
+RTC_DATA_ATTR static uint64_t rtcMicrosBase = 0;   // getRtcUs() value at last sync
 RTC_DATA_ATTR static bool     timeKnown     = false;
 
 // Bitmask: bit i = entry i was fired today. uint8_t supports up to 8 entries.
@@ -20,7 +25,7 @@ static uint8_t  entryCount = 0;
 static Preferences prefs;
 
 static void loadScheduleFromNVS() {
-    prefs.begin("schedule", true);
+    if (!prefs.begin("schedule", true)) return;  // namespace not created yet — defaults are 0
     entryCount = prefs.getUChar("count", 0);
     if (entryCount > SCHEDULE_MAX_ENTRIES) entryCount = SCHEDULE_MAX_ENTRIES;
     prefs.getBytes("entries", entries, entryCount * sizeof(FeedTime));
@@ -44,14 +49,14 @@ void scheduleInit() {
 
 void scheduleSetTime(uint32_t epoch) {
     rtcEpochBase  = epoch;
-    rtcMicrosBase = esp_rtc_get_time_us();
+    rtcMicrosBase = getRtcUs();
     timeKnown     = true;
     ESP_LOGI("schedule", "time synced epoch=%lu", (unsigned long)epoch);
 }
 
 uint32_t scheduleNow() {
     if (!timeKnown) return 0;
-    uint64_t elapsed = esp_rtc_get_time_us() - rtcMicrosBase;
+    uint64_t elapsed = getRtcUs() - rtcMicrosBase;
     return rtcEpochBase + (uint32_t)(elapsed / 1000000ULL);
 }
 
@@ -70,6 +75,12 @@ void scheduleSet(const FeedTime* src, uint8_t count) {
 }
 
 void scheduleCheck() {
+    // Schedule has minute-level precision — no need to check more often than once a minute.
+    // nextCheckMs=0 on first call (cold boot or deep-sleep wake) → runs immediately.
+    static uint32_t nextCheckMs = 0;
+    if (millis() < nextCheckMs) return;
+    nextCheckMs = millis() + 60000;
+
     if (!timeKnown || entryCount == 0) return;
 
     uint32_t now   = scheduleNow();
@@ -91,13 +102,20 @@ void scheduleCheck() {
         if (curHHMM >= entryHHMM) {
             ESP_LOGI("schedule", "firing entry %u (%02u:%02u)", i, entries[i].hour, entries[i].minute);
             FeedResult r = dosingFeed(FeedMode::SCHEDULE);
-            if (r == FeedResult::OK) {
-                firedToday |= (1 << i);
-            } else {
-                ESP_LOGW("schedule", "feed skipped, result=%u — will retry next check", (uint8_t)r);
+            firedToday |= (1 << i);  // mark done regardless — blocked entries are skipped, not retried
+            if (r != FeedResult::OK) {
+                static const char* const kReasons[] = {"OK", "BLOCKED_INTERVAL", "BLOCKED_DAILY", "NO_TIME"};
+                ESP_LOGW("schedule", "entry %u (%02u:%02u) skipped: %s",
+                    i, entries[i].hour, entries[i].minute,
+                    kReasons[(uint8_t)r < 4 ? (uint8_t)r : 0]);
             }
         }
     }
+}
+
+uint8_t scheduleGet(FeedTime* dst) {
+    memcpy(dst, entries, entryCount * sizeof(FeedTime));
+    return entryCount;
 }
 
 uint32_t scheduleNextWakeSec() {

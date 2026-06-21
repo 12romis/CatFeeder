@@ -1,9 +1,11 @@
+#include "config.h"
+#if BLE_ENABLED
+
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include "ble.h"
 #include "dosing.h"
 #include "schedule.h"
-#include "config.h"
 
 // UUIDs — 128-bit, custom service. Finalize when the app is built.
 #define SVC_UUID    "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -22,7 +24,7 @@ static uint32_t startMs = 0;
 class CmdCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* c) override {
         auto val = c->getValue();
-        if (val.empty()) return;
+        if (val.size() == 0) return;
 
         uint8_t op = (uint8_t)val[0];
         switch (op) {
@@ -70,8 +72,10 @@ void bleStart() {
 
 void bleStop() {
     NimBLEDevice::getAdvertising()->stop();
-    if (pServer->getConnectedCount()) {
-        pServer->disconnectAll();
+    // Disconnect all active clients; NimBLE 1.x exposes per-connection disconnect.
+    uint8_t count = pServer->getConnectedCount();
+    for (uint8_t i = 0; i < count; i++) {
+        pServer->disconnect(pServer->getPeerInfo(i).getConnHandle());
     }
     active = false;
     ESP_LOGI("ble", "advertising stopped");
@@ -86,3 +90,5 @@ void bleTick() {
         bleStop();
     }
 }
+
+#endif // BLE_ENABLED

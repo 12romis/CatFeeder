@@ -29,6 +29,7 @@ See schematic in [`schema/KiCad/cat_feeder.pdf`](schema/KiCad/cat_feeder.pdf)
 or open the KiCad project at [`schema/KiCad/CatFeeder.kicad_sch`](schema/KiCad/CatFeeder.kicad_sch).
 
 ![alt text](image.png)
+![alt text](image-1.png)
 
 **Pin map (ESP32-C3 SuperMini):**
 
@@ -107,6 +108,19 @@ SCHED 07:00 18:30
 
 The schedule is saved to flash (NVS) and survives power-off.
 
+Between scheduled feeds the device is in deep sleep. It wakes automatically at each
+scheduled time, runs the motor, then sleeps until the next entry.
+
+**Scheduled feed limits** (config.h):
+
+| Limit | Default | Description |
+|-------|---------|-------------|
+| `MAX_PORTIONS_PER_DAY` | 4 | Max scheduled feeds per day; extras are skipped |
+| `MIN_INTERVAL_SEC` | 1800 s | Min gap between scheduled feeds (30 min) |
+
+These limits apply **only to the schedule**. Button press and `FEED` serial command
+are always allowed regardless of how recently the motor ran.
+
 ### 3. Calibrate portion size
 
 Portion size is defined in **stepper steps**, not time. Calibrate by weighing:
@@ -123,9 +137,9 @@ Repeat `CAL` until the dispensed amount matches the desired portion weight.
 ### 4. Verify
 
 ```
-STATUS        ← show stepsPerPortion, portionsToday, last feed time, current epoch
-FEED          ← manual feed (respects minimum interval, ignores daily quota)
-RESET_DAY     ← zero daily counters (for testing)
+STATUS        ← show time, steps, portionsToday, schedule with next feed countdown
+FEED          ← manual feed (no limits)
+RESET_DAY     ← zero portionsToday and lastFeedEpoch (for testing)
 ```
 
 ---
@@ -138,7 +152,7 @@ RESET_DAY     ← zero daily counters (for testing)
 | `SCHED HH:MM [HH:MM ...]` | Set feeding schedule (UTC, up to 8 entries) |
 | `CAL <steps>` | Run motor N steps without counting as a feed |
 | `SAVE` | Save the last CAL step count to flash |
-| `FEED` | Dispense one portion (interval limit applies) |
+| `FEED` | Dispense one portion (no limits) |
 | `STATUS` | Print current device state |
 | `RESET_DAY` | Zero portionsToday and lastFeedEpoch |
 
@@ -148,7 +162,7 @@ RESET_DAY     ← zero daily counters (for testing)
 
 | Press | Action |
 |-------|--------|
-| Short press | Dispense one portion (minimum interval applies; no daily quota) |
+| Short press | Dispense one portion (no limits — always allowed) |
 | Long press ≥ 2 s | Enter deep sleep immediately without feeding |
 
 ---

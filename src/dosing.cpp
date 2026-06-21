@@ -14,9 +14,10 @@ RTC_DATA_ATTR static uint32_t lastFeedEpoch = 0;
 RTC_DATA_ATTR static uint32_t lastFeedDay   = 0;  // unix day of last feed
 
 void dosingInit() {
-    prefs.begin("dosing", true);  // read-only
-    stepsPerPortion = prefs.getUShort("steps", STEPS_PER_PORTION);
-    prefs.end();
+    if (prefs.begin("dosing", true)) {
+        stepsPerPortion = prefs.getUShort("steps", STEPS_PER_PORTION);
+        prefs.end();
+    }
 
     // Reset daily counter if it's a new day (requires time to be known)
     uint32_t now = scheduleNow();
@@ -45,19 +46,22 @@ FeedResult dosingFeed(FeedMode mode) {
             lastFeedDay   = today;
         }
 
-        // Guard against unsigned underflow when SET_TIME moves clock backward
-        if (lastFeedEpoch != 0 && now >= lastFeedEpoch &&
-            (now - lastFeedEpoch) < MIN_INTERVAL_SEC)
-            return FeedResult::BLOCKED_INTERVAL;
-
-        // Daily quota applies to scheduled feeds only — button is always allowed
-        if (mode == FeedMode::SCHEDULE && portionsToday >= MAX_PORTIONS_PER_DAY)
-            return FeedResult::BLOCKED_DAILY;
+        // Both safety limits apply to scheduled feeds only.
+        // Button and serial FEED are unrestricted (besides requiring time to be known).
+        if (mode == FeedMode::SCHEDULE) {
+            if (lastFeedEpoch != 0 && now >= lastFeedEpoch &&
+                (now - lastFeedEpoch) < MIN_INTERVAL_SEC)
+                return FeedResult::BLOCKED_INTERVAL;
+            if (portionsToday >= MAX_PORTIONS_PER_DAY)
+                return FeedResult::BLOCKED_DAILY;
+        }
     }
 
+    powerLedOn();
     powerBoostOn();
     motorStep(stepsPerPortion, /*antiJam=*/true);
     powerBoostOff();
+    powerLedOff();
 
     if (mode != FeedMode::CALIBRATE) {
         portionsToday++;
@@ -69,9 +73,11 @@ FeedResult dosingFeed(FeedMode mode) {
 }
 
 void dosingRunSteps(int32_t steps) {
+    powerLedOn();
     powerBoostOn();
     motorStep(steps, /*antiJam=*/false);
     powerBoostOff();
+    powerLedOff();
 }
 
 void dosingSaveSteps(uint16_t steps) {
@@ -85,8 +91,13 @@ void dosingSaveSteps(uint16_t steps) {
 // ── Serial command parser ──────────────────────────────────────────────────
 
 static char  serialBuf[64];
-static uint8_t serialPos = 0;
-static uint16_t calSteps = 0;  // last CAL value, waiting for SAVE
+static uint8_t  serialPos  = 0;
+static uint16_t calSteps   = 0;       // last CAL value, waiting for SAVE
+static uint32_t lastSerialMs = 0;     // millis() of last received command
+
+bool dosingIsSerialActive() {
+    return (millis() - lastSerialMs) < (uint32_t)SERIAL_STAY_AWAKE_SEC * 1000;
+}
 
 static void processLine(const char* line) {
     if (strncmp(line, "CAL ", 4) == 0) {
@@ -109,9 +120,29 @@ static void processLine(const char* line) {
         Serial.printf("FEED: %s\n", msg[(uint8_t)r]);
 
     } else if (strcmp(line, "STATUS") == 0) {
-        Serial.printf("stepsPerPortion=%u  portionsToday=%u  lastFeedEpoch=%lu  now=%lu\n",
-            stepsPerPortion, portionsToday, (unsigned long)lastFeedEpoch,
-            (unsigned long)scheduleNow());
+        uint32_t now = scheduleNow();
+        Serial.printf("time:          %s (epoch=%lu)\n",
+            scheduleTimeKnown() ? "known" : "UNKNOWN", (unsigned long)now);
+        Serial.printf("stepsPerPortion: %u\n", stepsPerPortion);
+        Serial.printf("portionsToday:   %u / %u\n", portionsToday, MAX_PORTIONS_PER_DAY);
+        Serial.printf("lastFeedEpoch:   %lu\n", (unsigned long)lastFeedEpoch);
+
+        FeedTime sched[SCHEDULE_MAX_ENTRIES];
+        uint8_t count = scheduleGet(sched);
+        if (count == 0) {
+            Serial.println("schedule:      (none)");
+        } else {
+            Serial.printf("schedule:      %u entr%s\n", count, count == 1 ? "y" : "ies");
+            for (uint8_t i = 0; i < count; i++)
+                Serial.printf("  [%u] %02u:%02u UTC\n", i, sched[i].hour, sched[i].minute);
+        }
+
+        uint32_t nextSec = scheduleNextWakeSec();
+        if (nextSec > 0)
+            Serial.printf("next feed in:  %luh %02lum\n",
+                (unsigned long)(nextSec / 3600), (unsigned long)((nextSec % 3600) / 60));
+        else
+            Serial.println("next feed in:  (no schedule / time unknown)");
 
     } else if (strcmp(line, "RESET_DAY") == 0) {
         portionsToday = 0;
@@ -171,6 +202,7 @@ void dosingProcessSerial() {
         if (c == '\n' || c == '\r') {
             if (serialPos > 0) {
                 serialBuf[serialPos] = '\0';
+                lastSerialMs = millis();  // reset stay-awake timer on every command
                 processLine(serialBuf);
                 serialPos = 0;
             }

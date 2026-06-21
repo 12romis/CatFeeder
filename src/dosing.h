@@ -9,9 +9,9 @@ enum class FeedResult : uint8_t {
 };
 
 enum class FeedMode : uint8_t {
-    SCHEDULE = 0,  // all limits: interval + daily quota
-    BUTTON   = 1,  // interval limit only — no daily quota check
-    CALIBRATE = 2, // no limits (CAL command only)
+    SCHEDULE  = 0,  // all limits: interval + daily quota
+    BUTTON    = 1,  // no limits — button and serial FEED are always allowed
+    CALIBRATE = 2,  // no limits, no portionsToday update (CAL command only)
 };
 
 void dosingInit();
@@ -30,3 +30,7 @@ uint8_t  dosingGetPortionsToday();
 
 // Call from loop() to process Serial commands (CAL/SAVE/FEED/STATUS/RESET_DAY).
 void dosingProcessSerial();
+
+// Returns true within SERIAL_STAY_AWAKE_SEC seconds after the last Serial command.
+// Used by powerTick() to stay awake for config sessions.
+bool dosingIsSerialActive();

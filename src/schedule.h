@@ -26,3 +26,6 @@ void scheduleCheck();
 
 // Seconds until the next scheduled feed (for deep-sleep timer). 0 = no schedule.
 uint32_t scheduleNextWakeSec();
+
+// Copy current schedule into dst (must fit SCHEDULE_MAX_ENTRIES). Returns entry count.
+uint8_t scheduleGet(FeedTime* dst);
