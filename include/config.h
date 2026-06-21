@@ -86,3 +86,5 @@
 #define SERIAL_STAY_AWAKE_SEC   60
 // Button debounce: presses shorter than this are ignored as noise.
 #define DEBOUNCE_MS             50
+// Max gap between two clicks to count as a double-click.
+#define DOUBLE_CLICK_MS         300

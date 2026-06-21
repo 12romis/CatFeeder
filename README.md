@@ -175,7 +175,8 @@ RESET_DAY     ← zero portionsToday and lastFeedEpoch (for testing)
 
 | Press | Action |
 |-------|--------|
-| Short press | Dispense one portion (no limits — always allowed) |
+| Short press | Dispense one portion |
+| Double click (gap < 300 ms) | Dispense two portions |
 | Long press ≥ 2 s | Enter deep sleep immediately without feeding |
 
 ---

@@ -51,7 +51,25 @@ void scheduleSetTime(uint32_t epoch) {
     rtcEpochBase  = epoch;
     rtcMicrosBase = getRtcUs();
     timeKnown     = true;
-    ESP_LOGI("schedule", "time synced epoch=%lu", (unsigned long)epoch);
+
+    // Mark schedule entries that are already past as fired so they don't
+    // trigger immediately after a cold boot or manual SET_TIME.
+    uint32_t today    = epoch / 86400;
+    uint32_t secOfDay = epoch % 86400;
+    uint16_t curHHMM  = (uint16_t)((secOfDay / 3600) * 100 + (secOfDay % 3600) / 60);
+
+    if (today != firedDay) {
+        firedToday = 0;
+        firedDay   = today;
+    }
+    for (uint8_t i = 0; i < entryCount; i++) {
+        if (curHHMM >= (uint16_t)(entries[i].hour * 100 + entries[i].minute)) {
+            firedToday |= (1 << i);
+        }
+    }
+
+    ESP_LOGI("schedule", "time synced epoch=%lu curHHMM=%04u pastMarked=0x%02X",
+             (unsigned long)epoch, curHHMM, firedToday);
 }
 
 uint32_t scheduleNow() {

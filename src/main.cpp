@@ -14,28 +14,46 @@
 // Deep sleep wakeup handles the button on wake-up; this handles it during the
 // active window (Serial config session, BLE window, etc.).
 
-static uint32_t btnPressMs = 0;
-static bool     btnHeld    = false;
+static uint32_t btnPressMs   = 0;
+static uint32_t btnReleaseMs = 0;
+static bool     btnHeld      = false;
+static uint8_t  clickCount   = 0;
 
 static void buttonTick() {
     bool low = (digitalRead(PIN_BUTTON) == LOW);
+    uint32_t now = millis();
 
     if (low && !btnHeld) {
-        btnPressMs = millis();
+        btnPressMs = now;
         btnHeld    = true;
     } else if (!low && btnHeld) {
-        uint32_t held = millis() - btnPressMs;
+        uint32_t held = now - btnPressMs;
         btnHeld = false;
         if (held < DEBOUNCE_MS) return;  // noise — ignore
 
         if (held >= LONG_PRESS_MS) {
+            clickCount = 0;
             ESP_LOGI("main", "long press while awake — sleep");
             powerSleep(scheduleNextWakeSec());
+            return;
+        }
+
+        clickCount++;
+        btnReleaseMs = now;
+    }
+
+    // Dispatch once double-click window expires and button is released
+    if (clickCount > 0 && !btnHeld && (now - btnReleaseMs) >= DOUBLE_CLICK_MS) {
+        if (clickCount >= 2) {
+            ESP_LOGI("main", "double click — double portion");
+            dosingFeed(FeedMode::BUTTON);
+            dosingFeed(FeedMode::BUTTON);
         } else {
             FeedResult r = dosingFeed(FeedMode::BUTTON);
             const char* msg[] = {"OK", "BLOCKED_INTERVAL", "BLOCKED_DAILY", "NO_TIME"};
             ESP_LOGI("main", "button feed: %s", msg[(uint8_t)r]);
         }
+        clickCount = 0;
     }
 }
 
