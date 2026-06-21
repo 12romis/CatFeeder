@@ -5,6 +5,7 @@
 #include "motor.h"
 #include "dosing.h"
 #include "schedule.h"
+#include "wifi_time.h"
 #if BLE_ENABLED
 #include "ble.h"
 #endif
@@ -80,9 +81,12 @@ void setup() {
         scheduleCheck();
 
     } else {
-        // Cold boot
+        // Cold boot — try NTP sync via Wi-Fi; fall back to SET_TIME via Serial
         ESP_LOGI("main", "cold boot");
-        // bleStart();  // open BLE window for initial time sync
+        bool synced = wifiSyncTime();
+        if (!synced) {
+            ESP_LOGW("main", "NTP failed — waiting for SET_TIME or WIFI_SSID/WIFI_PASS");
+        }
     }
 }
 

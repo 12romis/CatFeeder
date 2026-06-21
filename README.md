@@ -84,9 +84,19 @@ pio device monitor -e c3
 All configuration is done by typing commands in the PlatformIO Serial Monitor
 (line ending: `\n` or `\r\n`).
 
-### 1. Set the current time
+### 1. Configure Wi-Fi for automatic time sync (one-time setup)
 
-The device has no RTC chip. Time must be set after every full power-off.
+The device has no RTC chip. On every cold boot (power-on after battery removed or
+discharged) it connects to Wi-Fi, fetches UTC time from NTP, then immediately
+disconnects. Wi-Fi is **never used after deep-sleep wakes** — only on cold boot.
+
+```
+WIFI_SSID MyNetwork
+WIFI_PASS mypassword
+```
+
+Credentials are saved to flash and never need to be entered again.
+If Wi-Fi is unavailable, the device falls back to manual time entry:
 
 ```
 SET_TIME 1750420800
@@ -148,12 +158,15 @@ RESET_DAY     ← zero portionsToday and lastFeedEpoch (for testing)
 
 | Command | Description |
 |---------|-------------|
-| `SET_TIME <epoch>` | Set wall clock (Unix seconds UTC) |
+| `WIFI_SSID <ssid>` | Save Wi-Fi network name to flash |
+| `WIFI_PASS <pass>` | Save Wi-Fi password to flash |
+| `WIFI_SYNC` | Connect and sync time via NTP now |
+| `SET_TIME <epoch>` | Set wall clock manually (Unix seconds UTC) |
 | `SCHED HH:MM [HH:MM ...]` | Set feeding schedule (UTC, up to 8 entries) |
 | `CAL <steps>` | Run motor N steps without counting as a feed |
 | `SAVE` | Save the last CAL step count to flash |
 | `FEED` | Dispense one portion (no limits) |
-| `STATUS` | Print current device state |
+| `STATUS` | Print current device state incl. schedule and Wi-Fi SSID |
 | `RESET_DAY` | Zero portionsToday and lastFeedEpoch |
 
 ---

@@ -4,6 +4,7 @@
 #include "motor.h"
 #include "power.h"
 #include "schedule.h"
+#include "wifi_time.h"
 #include "config.h"
 
 static Preferences prefs;
@@ -144,10 +145,26 @@ static void processLine(const char* line) {
         else
             Serial.println("next feed in:  (no schedule / time unknown)");
 
+        String wifiSsid = wifiGetSsid();
+        Serial.printf("wifi SSID:     %s\n", wifiSsid.isEmpty() ? "(not configured)" : wifiSsid.c_str());
+
     } else if (strcmp(line, "RESET_DAY") == 0) {
         portionsToday = 0;
         lastFeedEpoch = 0;
         Serial.println("Daily counters reset.");
+
+    } else if (strncmp(line, "WIFI_SSID ", 10) == 0) {
+        wifiSetSsid(line + 10);
+        Serial.printf("Wi-Fi SSID saved: %s\n", line + 10);
+
+    } else if (strncmp(line, "WIFI_PASS ", 10) == 0) {
+        wifiSetPass(line + 10);
+        Serial.println("Wi-Fi password saved.");
+
+    } else if (strcmp(line, "WIFI_SYNC") == 0) {
+        Serial.println("Syncing time via Wi-Fi NTP...");
+        bool ok = wifiSyncTime();
+        Serial.printf("Wi-Fi NTP: %s\n", ok ? "OK" : "FAILED");
 
     } else if (strncmp(line, "SET_TIME ", 9) == 0) {
         // Testing without BLE: SET_TIME <unix_epoch>
@@ -193,6 +210,9 @@ static void processLine(const char* line) {
         Serial.println("  RESET_DAY            zero daily counters");
         Serial.println("  SET_TIME <epoch>     set wall clock (unix seconds)");
         Serial.println("  SCHED HH:MM [...]    set schedule, UTC, up to 8 entries");
+        Serial.println("  WIFI_SSID <ssid>     save Wi-Fi network name to flash");
+        Serial.println("  WIFI_PASS <pass>     save Wi-Fi password to flash");
+        Serial.println("  WIFI_SYNC            sync time via NTP now");
     }
 }
 

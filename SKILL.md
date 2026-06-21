@@ -83,12 +83,12 @@ producing firmware. Treat the hardware pin map and the safety rules as non-negot
   then move the motor.
 
 ### 4.4 Two feeding modes
-- **Schedule:** feed at configured times (hour:minute). On real hardware there is no RTC
-  chip — time is held by the ESP32 and **synced from the phone over BLE on connect**
-  (epoch/Unix time written by the app). If the device resets while the phone is away,
-  it does not know the wall-clock time until the next BLE sync — handle this gracefully
-  (don't fire stale/duplicate feeds; mark schedule entries done per day).
-- **Manual:** button press OR BLE command → one portion (subject to safety limits 4.5).
+- **Schedule:** feed at configured times (hour:minute). No RTC chip — time is obtained
+  via **Wi-Fi NTP on cold boot** (see §4.7). After a deep-sleep wake the time is already
+  known from RTC_DATA_ATTR; Wi-Fi is never activated on wake. If NTP fails (no
+  credentials or no AP), time can be set manually with `SET_TIME <epoch>` over Serial.
+  Until time is known, schedule mode is "pending" — no scheduled feeds fire.
+- **Manual:** button press OR Serial `FEED` → one portion, no limits.
 
 ### 4.5 Overfeed protection (safety — must be enforced for BOTH modes)
 - Minimum interval between portions (`MIN_INTERVAL`).
@@ -96,11 +96,24 @@ producing firmware. Treat the hardware pin map and the safety rules as non-negot
 - A blocked attempt must NOT dispense and should report a reason over BLE / serial.
 
 ### 4.6 Wake / sleep flow
-- Wake sources: button (GPIO9), and a timer for the next scheduled feed.
-- Pattern: wake → (if button) open a short BLE window (e.g. 60 s) for app settings →
-  perform any due feed → release coils → boost EN LOW → compute next wake → deep sleep.
-- BLE is only available while awake. Accept that an instant app command is not possible
-  during deep sleep; the button opens the BLE window. Document this tradeoff in code.
+- Wake sources: button (GPIO9) and RTC timer for the next scheduled feed.
+- Pattern: wake → perform any due feed → release coils → boost EN LOW → compute next
+  wake time → deep sleep.
+- Serial config window: device stays awake for `SERIAL_STAY_AWAKE_SEC` (60 s) after the
+  last Serial command, then sleeps. This allows typing SCHED/CAL/SAVE after first boot.
+
+### 4.7 Wi-Fi NTP time sync
+- **Cold boot only**: on `ESP_SLEEP_WAKEUP_UNDEFINED`, the device connects to the
+  configured AP, fetches UTC epoch from `pool.ntp.org`, calls `scheduleSetTime()`, then
+  disconnects and turns Wi-Fi off (`WiFi.mode(WIFI_OFF)`).
+- **Deep-sleep wakes**: Wi-Fi is never activated. Time is preserved in `RTC_DATA_ATTR`
+  across deep sleep cycles and does not need re-syncing until the next full power-off.
+- **Credentials**: stored in NVS namespace `"wifi"` (keys `ssid`, `pass`) via Serial
+  commands `WIFI_SSID` / `WIFI_PASS`. One-time setup, survives battery replacement.
+- **Fallback**: if Wi-Fi unavailable or not configured, device waits for `SET_TIME`
+  via Serial. Manual command `WIFI_SYNC` forces a sync at any time.
+- **Timeouts**: `WIFI_CONNECT_MS` (10 s) for association, `WIFI_NTP_MS` (5 s) for
+  first NTP response (config.h).
 
 ## 5. BLE GATT design (NimBLE)
 
@@ -169,6 +182,7 @@ CatFeeder/                      ← root = PlatformIO project (open this in VS C
 │   ├── dosing.cpp / dosing.h
 │   ├── schedule.cpp / schedule.h
 │   ├── ble.cpp / ble.h
+│   ├── wifi_time.cpp / wifi_time.h
 │   └── power.cpp / power.h
 ├── schema/
 │   ├── CatFeederSchematic.fzz  ← Fritzing (legacy/illustration)

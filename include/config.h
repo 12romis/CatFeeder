@@ -71,6 +71,14 @@
 #endif
 
 // ============================================================
+// Wi-Fi NTP time sync (cold boot only)
+// ============================================================
+#define WIFI_CONNECT_MS   10000           // max ms to associate with AP
+#define WIFI_NTP_MS        5000           // max ms to receive first NTP response
+#define NTP_SERVER1       "pool.ntp.org"
+#define NTP_SERVER2       "time.google.com"
+
+// ============================================================
 // Serial
 // ============================================================
 #define SERIAL_BAUD             115200
